@@ -19,8 +19,8 @@ def parse_complex_message(message):
     return total
 
 
-def parse(data):
-    RESOLUTION = timedelta(hours=2)
+def parse(data, resolution=2):
+    RESOLUTION = timedelta(hours=resolution)
     MIN_DELTA = timedelta(weeks=36)
 
     initiated = {}
@@ -56,12 +56,16 @@ def parse(data):
             initiated[not_sender] = [0]
     
     # Get cumulative scores for each party in infractions
+    initiated_forward = {}
+    initiated_backward = {}
     for party in parties:
-        initiated[party] = [sum(initiated[party][:i]) for i in range(len(initiated[party]))]
+        initiated_forward[party] = [sum(initiated[party][:i]) / (i if i != 0 else i + 1) * 100 for i in range(1, len(initiated[party]))]
+        initiated_backward[party] = [sum(initiated[party][-i:]) / (i if i != 0 else i + 1) * 100 for i in range(1, len(initiated[party]))]
     
-    initiated = pd.DataFrame(initiated)
+    initiated_forward = pd.DataFrame(initiated_forward)
+    initiated_backward = pd.DataFrame(initiated_backward)
         
-    return initiated, infractions
+    return initiated_forward, initiated_backward, infractions
 
 
 def info(message):
@@ -80,10 +84,28 @@ if __name__ == '__main__':
     data = data['messages']
     info(f'Parsing {len(data)} messages.')
 
-    initiated, infractions = parse(data)
+    st.write('# Telegram Chat Analyzer')
+    st.write('## Settings')
+
+    threshold = st.number_input('New conversation threshold (in hours):', min_value=1, max_value=24, value=2)
+    initiated_forward, initiated_backward, infractions = parse(data, threshold)
 
     # Write our dashboard
-    st.write('# Telegram Chat Analyzer')
-    st.write(f'Infractions: {infractions}')
+    st.write('## Stats')
+    st.write(f'You exchanged a total of {len(data)} messages!')
+    st.write(f'You had {len(initiated_forward)} conversations!')
 
-    st.line_chart(initiated)
+    st.write('## Infractions')
+    st.write('An infraction is where neither party has communicated for over 9 months. This is BAD.')
+
+    if infractions == 0:
+        st.write('Woohoo! You have no infractions.')
+    else:
+        st.write(f'Uh oh! You have {infractions} infractions.')
+
+    st.write('## Initiation percentage')
+    st.write('This is a graph of the percentage of conversations each of you initiated. For a healthy friendship, both lines should stay above 25%.')
+    st.write('### Starting from the beginning')
+    st.line_chart(initiated_forward)
+    st.write('### Starting from the end')
+    st.line_chart(initiated_backward)
