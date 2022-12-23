@@ -7,38 +7,51 @@ import streamlit as st
 import pandas as pd
 
 
-class list(list):
-    def map(self, func):
-        return list(map(func, self))    
+def parse_complex_message(message):
+    total = ''
+
+    for part in message:
+        if isinstance(part, str):
+            total += f'{part} '
+        elif isinstance(part, dict):
+            total += f'{part["text"]} '
+
+    return total
 
 
 def parse(data):
     RESOLUTION = timedelta(hours=2)
     MIN_DELTA = timedelta(weeks=36)
 
-    st.write(data)
-
     initiated = {}
     infractions = 0
-    parties = set(list(data).map(lambda x: x['from']))
+
+    data = [message for message in data if 'from' in message]
+    parties = set(list(map(lambda x: x['from'], data)))
 
     for i, message in enumerate(tqdm(data)):
-        date = datetime.fromisoformat(data['date'])
+        date = datetime.fromisoformat(message['date'])
         text = message['text']
         sender = message['from']
+        not_sender = list(parties - {sender})[0]
 
         if i != 0:
             # This is not the first message, so we can check if this is the first message in a new conversation
             if date - datetime.fromisoformat(data[i - 1]['date']) >= RESOLUTION:
-                if 'happy birthday' not in text.tolower():
-                    # `sender` initiated a new conversation
-                    initiated[sender].append(1)
-                    initiated[not_sender].append(0)
+                try:
+                    if isinstance(text, list):
+                        text = parse_complex_message(text)
+
+                    if 'happy birthday' not in text.lower():
+                        # `sender` initiated a new conversation
+                        initiated[sender].append(1)
+                        initiated[not_sender].append(0)
+                except:
+                    print('Message is', message)
 
             if date - datetime.fromisoformat(data[i - 1]['date']) >= MIN_DELTA:
                 infractions += 1
         else:
-            not_sender = parties - {sender}
             initiated[sender] = [1]
             initiated[not_sender] = [0]
     
