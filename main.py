@@ -7,6 +7,11 @@ import streamlit as st
 import pandas as pd
 
 
+class list(list):
+    def map(self, func):
+        return list(map(func, self))    
+
+
 def parse(data):
     RESOLUTION = timedelta(hours=2)
     MIN_DELTA = timedelta(weeks=36)
