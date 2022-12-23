@@ -9,7 +9,7 @@ import pandas as pd
 
 def parse(data):
     RESOLUTION = timedelta(hours=2)
-    MIN_DELTA = timedelta(months=9)
+    MIN_DELTA = timedelta(weeks=36)
 
     initiated = {}
     infractions = 0
