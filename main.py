@@ -16,6 +16,8 @@ def parse(data):
     RESOLUTION = timedelta(hours=2)
     MIN_DELTA = timedelta(weeks=36)
 
+    st.write(data)
+
     initiated = {}
     infractions = 0
     parties = set(list(data).map(lambda x: x['from']))
