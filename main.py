@@ -48,12 +48,16 @@ def parse_complex_message(message):
 def parse_telegram(data, resolution=2):
     RESOLUTION = timedelta(hours=resolution)
     MIN_DELTA = timedelta(weeks=36)
+    MIN_MESSAGES = 10
 
     initiated = {}
     infractions = 0
 
     data = [message for message in data if "from" in message]
     parties = set(list(map(lambda x: x["from"], data)))
+
+    conv_start = 0
+    prev_sender = None
 
     for i, message in enumerate(tqdm(data)):
         date = datetime.fromisoformat(message["date"])
@@ -69,9 +73,19 @@ def parse_telegram(data, resolution=2):
                         text = parse_complex_message(text)
 
                     if not is_trivial_message(text):
+                        # Check the number of messages in the previous conversation
+                        if i - conv_start < MIN_MESSAGES and prev_sender is not None:
+                            # Previous conversation was too short
+                            initiated[prev_sender].pop()
+                            not_prev_sender = list(parties - {prev_sender})[0]
+                            initiated[not_prev_sender].pop()
+
                         # `sender` initiated a new conversation
                         initiated[sender].append(1)
                         initiated[not_sender].append(0)
+
+                        prev_sender = sender
+                        conv_start = i
                 except:
                     print("Message is", message)
 
@@ -87,6 +101,7 @@ def parse_telegram(data, resolution=2):
 def parse_instagram(data, resolution=2):
     RESOLUTION = timedelta(hours=resolution)
     MIN_DELTA = timedelta(weeks=36)
+    MIN_MESSAGES = 10
 
     initiated = {}
     infractions = 0
@@ -102,6 +117,9 @@ def parse_instagram(data, resolution=2):
         sender = message["sender_name"]
         not_sender = list(parties - {sender})[0]
 
+        conv_start = 0
+        prev_sender = None
+
         if i != 0:
             # This is not the first message, so we can check if this is the first message in a new conversation
             if datetime.fromtimestamp(data[i - 1]["timestamp_ms"] / 1000.) - date >= RESOLUTION:
@@ -111,9 +129,19 @@ def parse_instagram(data, resolution=2):
                         continue
 
                     if not is_trivial_message(text):
+                        # Check the number of messages in the previous conversation
+                        if i - conv_start < MIN_MESSAGES and prev_sender is not None:
+                            # Previous conversation was too short
+                            initiated[prev_sender].pop()
+                            not_prev_sender = list(parties - {prev_sender})[0]
+                            initiated[not_prev_sender].pop()
+
                         # `sender` initiated a new conversation
                         initiated[sender].append(1)
                         initiated[not_sender].append(0)
+
+                        prev_sender = sender
+                        conv_start = i
                 except:
                     print("Message is", message)
                     raise
