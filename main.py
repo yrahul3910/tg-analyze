@@ -67,7 +67,7 @@ def parse_telegram(data, resolution=2):
 
         if i != 0:
             # This is not the first message, so we can check if this is the first message in a new conversation
-            if date - datetime.fromisoformat(data[i - 1]["date"]) >= RESOLUTION:
+            if date - datetime.fromisoformat(data[i - 1]["date"]) >= RESOLUTION and sender != prev_sender:
                 try:
                     if isinstance(text, list):
                         text = parse_complex_message(text)
@@ -122,7 +122,7 @@ def parse_instagram(data, resolution=2):
 
         if i != 0:
             # This is not the first message, so we can check if this is the first message in a new conversation
-            if datetime.fromtimestamp(data[i - 1]["timestamp_ms"] / 1000.) - date >= RESOLUTION:
+            if datetime.fromtimestamp(data[i - 1]["timestamp_ms"] / 1000.) - date >= RESOLUTION and sender != prev_sender:
                 try:
                     # Check that this is not a reel
                     if "share" in message and "instagram.com" in message["share"]:
