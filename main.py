@@ -1,25 +1,30 @@
 import argparse
+from math import perm
 import sys
 import json
 from datetime import datetime, timedelta
-from tqdm import tqdm
+
 from colorama import Fore, Style
-import streamlit as st
+from tqdm import tqdm
 import pandas as pd
+import streamlit as st
+import pendulum
 
 
 def get_parsed_results(initiated, parties):
+    initiated_bools = { party: [x[0] for x in initiated[party]] for party in parties }
+
     # Get cumulative scores for each party in infractions
     initiated_forward = {}
     initiated_backward = {}
     for party in parties:
         initiated_forward[party] = [
-            sum(initiated[party][:i]) / (i if i != 0 else i + 1) * 100
-            for i in range(1, len(initiated[party]))
+            sum(initiated_bools[party][:i]) / (i if i != 0 else i + 1) * 100
+            for i in range(1, len(initiated_bools[party]))
         ]
         initiated_backward[party] = [
-            sum(initiated[party][-i:]) / (i if i != 0 else i + 1) * 100
-            for i in range(1, len(initiated[party]))
+            sum(initiated_bools[party][-i:]) / (i if i != 0 else i + 1) * 100
+            for i in range(1, len(initiated_bools[party]))
         ]
 
     initiated_forward = pd.DataFrame(initiated_forward)
@@ -67,7 +72,7 @@ def parse_telegram(data, resolution=2):
 
         if i != 0:
             # This is not the first message, so we can check if this is the first message in a new conversation
-            if date - datetime.fromisoformat(data[i - 1]["date"]) >= RESOLUTION and sender != prev_sender:
+            if date - datetime.fromisoformat(data[i - 1]["date"]) >= RESOLUTION and sender != data[i - 1]["from"]:
                 try:
                     if isinstance(text, list):
                         text = parse_complex_message(text)
@@ -81,8 +86,8 @@ def parse_telegram(data, resolution=2):
                             initiated[not_prev_sender].pop()
 
                         # `sender` initiated a new conversation
-                        initiated[sender].append(1)
-                        initiated[not_sender].append(0)
+                        initiated[sender].append((1, date))
+                        initiated[not_sender].append((0, date))
 
                         prev_sender = sender
                         conv_start = i
@@ -92,10 +97,18 @@ def parse_telegram(data, resolution=2):
             if date - datetime.fromisoformat(data[i - 1]["date"]) >= MIN_DELTA:
                 infractions += 1
         else:
-            initiated[sender] = [1]
-            initiated[not_sender] = [0]
+            initiated[sender] = [(1, date)]
+            initiated[not_sender] = [(0, date)]
     
-    return *get_parsed_results(initiated, parties), infractions
+    last_sent = {}
+    for party in parties:
+        # Instagram orders them newest first, so we can just iterate through the list
+        for i in range(len(initiated[party])):
+            if initiated[party][i][0] == 1:
+                last_sent[party] = initiated[party][i][1]
+                break
+
+    return *get_parsed_results(initiated, parties), infractions, last_sent
 
 
 def parse_instagram(data, resolution=2):
@@ -137,8 +150,8 @@ def parse_instagram(data, resolution=2):
                             initiated[not_prev_sender].pop()
 
                         # `sender` initiated a new conversation
-                        initiated[sender].append(1)
-                        initiated[not_sender].append(0)
+                        initiated[sender].append((1, message["timestamp_ms"] / 1000.))
+                        initiated[not_sender].append((0, message["timestamp_ms"] / 1000.))
 
                         prev_sender = sender
                         conv_start = i
@@ -149,10 +162,18 @@ def parse_instagram(data, resolution=2):
             if abs(date - datetime.fromtimestamp(data[i - 1]["timestamp_ms"] / 1000.)) >= MIN_DELTA:
                 infractions += 1
         else:
-            initiated[sender] = [1]
-            initiated[not_sender] = [0]
+            initiated[sender] = [(1, message["timestamp_ms"] / 1000.)]
+            initiated[not_sender] = [(0, message["timestamp_ms"] / 1000.)]
 
-    return *get_parsed_results(initiated, parties), infractions
+    last_sent = {}
+    for party in parties:
+        # Instagram orders them newest first, so we can just iterate through the list
+        for i in range(len(initiated[party])):
+            if initiated[party][i][0] == 1:
+                last_sent[party] = initiated[party][i][1]
+                break
+
+    return *get_parsed_results(initiated, parties), infractions, last_sent
 
 
 def parse(data, source="telegram", resolution=2):
@@ -208,7 +229,7 @@ if __name__ == "__main__":
     threshold = st.number_input(
         "New conversation threshold (in hours):", min_value=1, max_value=60, value=2
     )
-    initiated_forward, initiated_backward, infractions = parse(data, source, threshold)
+    initiated_forward, initiated_backward, infractions, last_sent = parse(data, source, threshold)
 
     # Write our dashboard
     st.write("## Stats")
@@ -229,6 +250,13 @@ if __name__ == "__main__":
     st.write(
         "This is a graph of the percentage of conversations each of you initiated. For a healthy friendship, both lines should stay above 25%."
     )
+
+    st.write("## Last started conversations")
+    for party in last_sent:
+        time_last_sent = pendulum.from_timestamp(last_sent[party]).to_formatted_date_string()
+        time_since = pendulum.from_timestamp(last_sent[party]).diff_for_humans()
+        st.write(f"* {party} last started a conversation on {time_last_sent} ({time_since}).")
+
     st.write("### Starting from the beginning")
     st.line_chart(initiated_forward)
     st.write("### Starting from the end")
